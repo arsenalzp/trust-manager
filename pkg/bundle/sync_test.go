@@ -1729,3 +1729,36 @@ func Test_certAlias(t *testing.T) {
 		t.Fatalf("expected alias to be %q but got %q", expectedAlias, alias)
 	}
 }
+
+func TestCertificatesDeduplication(t *testing.T) {
+	// list of certificates
+	certificateList := []string{
+		dummy.TestCertificate3Duplicate,
+		dummy.TestCertificate1,
+		dummy.TestCertificate2,
+		dummy.TestCertificate3,
+		dummy.TestCertificate5Duplicate,
+		dummy.TestCertificate4,
+		dummy.TestCertificate5,
+	}
+
+	// test bundle
+	testBundle := []string{
+		dummy.TestCertificate3Duplicate,
+		dummy.TestCertificate1,
+		dummy.TestCertificate2,
+		dummy.TestCertificate5Duplicate,
+		dummy.TestCertificate4,
+	}
+
+	resultBundle := deduplicateCertificates(certificateList)
+	// check numbers of certificates
+	assert.Equal(t, len(testBundle), len(resultBundle))
+
+	// check certificates bundle for duplicated certificates
+	for i, cert := range resultBundle {
+		if testBundle[i] != cert {
+			t.Fatalf("duplicate certificate found %s\n", cert)
+		}
+	}
+}
