@@ -1730,9 +1730,9 @@ func Test_certAlias(t *testing.T) {
 	}
 }
 
-func TestCertificatesDeduplication(t *testing.T) {
+func TestBundlesDeduplication(t *testing.T) {
 	// list of certificates
-	certificateList := []string{
+	bundle := []string{
 		dummy.TestCertificate3Duplicate,
 		dummy.TestCertificate1,
 		dummy.TestCertificate2,
@@ -1751,14 +1751,8 @@ func TestCertificatesDeduplication(t *testing.T) {
 		dummy.TestCertificate4,
 	}
 
-	resultBundle := deduplicateCertificates(certificateList)
-	// check numbers of certificates
-	assert.Equal(t, len(testBundle), len(resultBundle))
+	resultBundle := deduplicateBundles(bundle)
 
 	// check certificates bundle for duplicated certificates
-	for i, cert := range resultBundle {
-		if testBundle[i] != cert {
-			t.Fatalf("duplicate certificate found %s\n", cert)
-		}
-	}
+	assert.ElementsMatch(t, testBundle, resultBundle)
 }

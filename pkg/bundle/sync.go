@@ -130,7 +130,7 @@ func (b *bundle) buildSourceBundle(ctx context.Context, bundle *trustapi.Bundle)
 		return bundleData{}, fmt.Errorf("couldn't find any valid certificates in bundle")
 	}
 
-	if err := resolvedBundle.populateData(deduplicateCertificates(bundles), bundle.Spec.Target); err != nil {
+	if err := resolvedBundle.populateData(deduplicateBundles(bundles), bundle.Spec.Target); err != nil {
 		return bundleData{}, err
 	}
 
@@ -778,7 +778,8 @@ func (b *bundle) migrateConfigMapToApply(ctx context.Context, obj client.Object,
 	return true, b.directClient.Update(ctx, &cm)
 }
 
-func deduplicateCertificates(bundles []string) []string {
+// remove duplicate certificates from bundles
+func deduplicateBundles(bundles []string) []string {
 	var certificatesHashes = make(map[[32]byte]struct{})
 	var dedupCerts []string
 
