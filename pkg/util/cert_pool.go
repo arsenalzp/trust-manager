@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -24,21 +25,25 @@ import (
 )
 
 // CertPool is a set of certificates.
-type certPool struct {
-	certificates  []*x509.Certificate
-	filterExpired bool
+type CertPool struct {
+	certificatesHashes map[[32]byte]struct{}
+	certificates       []*x509.Certificate
+	filterExpired      bool
+	filterDuplicates   bool
 }
 
 // newCertPool returns a new, empty CertPool.
-func newCertPool(filterExpired bool) *certPool {
-	return &certPool{
-		certificates:  make([]*x509.Certificate, 0),
-		filterExpired: filterExpired,
+func NewCertPool(filterExpired bool, filterDuplicates bool) *CertPool {
+	return &CertPool{
+		certificates:       make([]*x509.Certificate, 0),
+		filterExpired:      filterExpired,
+		filterDuplicates:   filterDuplicates,
+		certificatesHashes: make(map[[32]byte]struct{}),
 	}
 }
 
 // Append certificate to a pool
-func (cp *certPool) appendCertFromPEM(pemData []byte) error {
+func (cp *CertPool) appendCertFromPEM(pemData []byte) error {
 	if pemData == nil {
 		return fmt.Errorf("certificate data can't be nil")
 	}
@@ -75,6 +80,12 @@ func (cp *certPool) appendCertFromPEM(pemData []byte) error {
 			continue
 		}
 
+		if cp.filterDuplicates {
+			if cp.isDuplicate(certificate) {
+				continue
+			}
+		}
+
 		cp.certificates = append(cp.certificates, certificate)
 	}
 
@@ -82,7 +93,7 @@ func (cp *certPool) appendCertFromPEM(pemData []byte) error {
 }
 
 // Get PEM certificates from pool
-func (cp *certPool) getCertsPEM() [][]byte {
+func (cp *CertPool) getCertsPEM() [][]byte {
 	var certsData [][]byte = make([][]byte, len(cp.certificates))
 
 	for i, cert := range cp.certificates {
@@ -90,4 +101,26 @@ func (cp *certPool) getCertsPEM() [][]byte {
 	}
 
 	return certsData
+}
+
+// Get certificates quantity in the certificates pool
+func (cp *CertPool) GetCertsQuantity() int {
+	return len(cp.certificates)
+}
+
+// Check deplicates of certificate in the certificates pool
+func (cp *CertPool) isDuplicate(cert *x509.Certificate) bool {
+	hash := sha256.Sum256(cert.Raw)
+	// check existence of the hash
+	if _, ok := cp.certificatesHashes[hash]; !ok {
+		cp.certificatesHashes[hash] = struct{}{}
+		return false
+	}
+
+	return true
+}
+
+// Get the full list of x509 Certificates from the certificates pool
+func (cp *CertPool) getCertsList() []*x509.Certificate {
+	return cp.certificates
 }

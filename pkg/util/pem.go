@@ -21,6 +21,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"strings"
 )
 
 // ValidateAndSanitizePEMBundle strictly validates a given input PEM bundle to confirm it contains
@@ -46,35 +47,19 @@ type ValidateAndSanitizeOptions struct {
 	FilterExpired bool // If true, expired certificates will be filtered out
 }
 
-// ValidateAndSanitizePEMBundle keeps the original function signature for backward compatibility
-func ValidateAndSanitizePEMBundle(data []byte) ([]byte, error) {
-	opts := ValidateAndSanitizeOptions{
-		FilterExpired: false,
-	}
-	return ValidateAndSanitizePEMBundleWithOptions(data, opts)
-}
-
-// ValidateAndSplitPEMBundle keeps the original function signature for backward compatibility
-func ValidateAndSplitPEMBundle(data []byte) ([][]byte, error) {
-	opts := ValidateAndSanitizeOptions{
-		FilterExpired: false,
-	}
-	return ValidateAndSplitPEMBundleWithOptions(data, opts)
-}
-
 // See also https://github.com/golang/go/blob/5d5ed57b134b7a02259ff070864f753c9e601a18/src/crypto/x509/cert_pool.go#L201-L239
 // An option to enable filtering of expired certificates is available.
-func ValidateAndSanitizePEMBundleWithOptions(data []byte, opts ValidateAndSanitizeOptions) ([]byte, error) {
-	certificates, err := ValidateAndSplitPEMBundleWithOptions(data, opts)
+func ValidateAndSanitizePEMBundleWithOptions(certPool *CertPool, data []byte) error {
+	err := certPool.appendCertFromPEM(data)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if len(certificates) == 0 {
-		return nil, fmt.Errorf("bundle contains no PEM certificates")
+	if certPool.GetCertsQuantity() == 0 {
+		return fmt.Errorf("bundle contains no PEM certificates")
 	}
 
-	return bytes.TrimSpace(bytes.Join(certificates, nil)), nil
+	return nil
 }
 
 // ValidateAndSplitPEMBundleWithOptions takes a PEM bundle as input, validates it and
@@ -83,15 +68,13 @@ func ValidateAndSanitizePEMBundleWithOptions(data []byte, opts ValidateAndSaniti
 // no duplicated certificates in the bundle.
 // For details of the validation performed, see the comment for ValidateAndSanitizePEMBundle
 // An option to enable filtering of expired certificates is available.
-func ValidateAndSplitPEMBundleWithOptions(data []byte, opts ValidateAndSanitizeOptions) ([][]byte, error) {
-	var certPool *certPool = newCertPool(opts.FilterExpired) // put PEM encoded certificate into a pool
-
+func ValidateAndSplitPEMBundleWithOptions(certPool *CertPool, data []byte, opts ValidateAndSanitizeOptions) error {
 	err := certPool.appendCertFromPEM(data)
 	if err != nil {
-		return nil, fmt.Errorf("invalid PEM block in bundle; invalid PEM certificate: %w", err)
+		return fmt.Errorf("invalid PEM block in bundle; invalid PEM certificate: %w", err)
 	}
 
-	return certPool.getCertsPEM(), nil
+	return nil
 }
 
 // DecodeX509CertificateChainBytes will decode a PEM encoded x509 Certificate chain.
@@ -120,4 +103,30 @@ func DecodeX509CertificateChainBytes(certBytes []byte) ([]*x509.Certificate, err
 	}
 
 	return certs, nil
+}
+
+// Get the split bundle of all certificates in the certificates pool as representation of [][]byte
+func GetSplitPEMBundle(certPool *CertPool) [][]byte {
+	return certPool.getCertsPEM()
+}
+
+// Get the split bundle of all certificates in the certificates pool as representation of []byte
+func GetSplitPEMBundleBytes(certPool *CertPool) []byte {
+	return bytes.TrimSpace(bytes.Join(certPool.getCertsPEM(), nil))
+}
+
+// Get the split bundle of all certificates in the certificates pool as representation of []string
+func GetSplitPEMBundleStrings(certPool *CertPool) []string {
+	var certList = make([]string, 0)
+
+	for _, cert := range certPool.getCertsPEM() {
+		certList = append(certList, strings.TrimSpace(string(cert)))
+	}
+
+	return certList
+}
+
+// Get the list of all x509 Certificates in the certificates pool
+func GetCertsList(certPool *CertPool) []*x509.Certificate {
+	return certPool.getCertsList()
 }

@@ -64,7 +64,7 @@ type bundleData struct {
 // is each bundle is concatenated together with a new line character.
 func (b *bundle) buildSourceBundle(ctx context.Context, bundle *trustapi.Bundle) (bundleData, error) {
 	var resolvedBundle bundleData
-	var bundles []string
+	var certPool = util.NewCertPool(b.FilterExpiredCerts, b.FilterDuplicateCerts)
 
 	for _, source := range bundle.Spec.Sources {
 		var (
@@ -99,27 +99,20 @@ func (b *bundle) buildSourceBundle(ctx context.Context, bundle *trustapi.Bundle)
 			return bundleData{}, fmt.Errorf("failed to retrieve bundle from source: %w", err)
 		}
 
-		opts := util.ValidateAndSanitizeOptions{FilterExpired: b.Options.FilterExpiredCerts}
-		sanitizedBundle, err := util.ValidateAndSanitizePEMBundleWithOptions([]byte(sourceData), opts)
+		err = util.ValidateAndSanitizePEMBundleWithOptions(certPool, []byte(sourceData))
 		if err != nil {
 			return bundleData{}, fmt.Errorf("invalid PEM data in source: %w", err)
 		}
 
-		bundles = append(bundles, string(sanitizedBundle))
 	}
 
 	// NB: empty bundles are not valid so check and return an error if one somehow snuck through.
 
-	if len(bundles) == 0 {
+	if certPool.GetCertsQuantity() == 0 {
 		return bundleData{}, fmt.Errorf("couldn't find any valid certificates in bundle")
 	}
 
-	deduplicatedBundles, err := deduplicateBundles(bundles)
-	if err != nil {
-		return bundleData{}, err
-	}
-
-	if err := resolvedBundle.populateData(deduplicatedBundles, bundle.Spec.Target); err != nil {
+	if err := resolvedBundle.populateData(util.GetSplitPEMBundleStrings(certPool), bundle.Spec.Target); err != nil {
 		return bundleData{}, err
 	}
 

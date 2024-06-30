@@ -61,6 +61,9 @@ type Options struct {
 
 	// FilterExpiredCerts controls if expired certificates are filtered from the bundle.
 	FilterExpiredCerts bool
+
+	// FilterExpiredCerts controls if duplicate certificates are filtered from the bundle.
+	FilterDuplicateCerts bool
 }
 
 // bundle is a controller-runtime controller. Implements the actual controller

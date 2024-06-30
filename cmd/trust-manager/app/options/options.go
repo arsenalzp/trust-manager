@@ -208,6 +208,10 @@ func (o *Options) addBundleFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.Bundle.FilterExpiredCerts,
 		"filter-expired-certificates", false,
 		"Filter expired certificates from the bundle.")
+
+	fs.BoolVar(&o.Bundle.FilterDuplicateCerts,
+		"filter-duplicate-certificates", true,
+		"Filter duplicate certificates from the bundle.")
 }
 
 func (o *Options) addLoggingFlags(fs *pflag.FlagSet) {

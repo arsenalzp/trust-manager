@@ -18,6 +18,7 @@ package util
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/x509"
 	"strings"
 	"testing"
@@ -35,70 +36,91 @@ func TestValidateAndSanitizePEMBundle(t *testing.T) {
 	}
 
 	cases := map[string]struct {
-		parts              []string
-		filterExpiredCerts bool
-		expectExpiredCerts bool
-		expectErr          bool
+		parts                 []string
+		filterDuplicateCerts  bool
+		filterExpiredCerts    bool
+		expectExpiredCerts    bool
+		expectErr             bool
+		expectDuplicatesCerts bool
 	}{
 		"valid bundle with all types of cert and no comments succeeds": {
-			parts:     []string{dummy.TestCertificate1, dummy.TestCertificate2, dummy.TestCertificate3},
-			expectErr: false,
+			parts:                []string{dummy.TestCertificate1, dummy.TestCertificate2, dummy.TestCertificate3},
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"valid bundle with all types of cert and a random comment succeeds": {
-			parts:     []string{dummy.TestCertificate1, randomComment, dummy.TestCertificate2, randomComment, dummy.TestCertificate3, randomComment},
-			expectErr: false,
+			parts:                []string{dummy.TestCertificate1, randomComment, dummy.TestCertificate2, randomComment, dummy.TestCertificate3, randomComment},
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"valid bundle with all types of cert and a poison comment succeeds": {
-			parts:     []string{dummy.TestCertificate1, string(poisonComment), dummy.TestCertificate2, randomComment, dummy.TestCertificate3, string(poisonComment)},
-			expectErr: false,
+			parts:                []string{dummy.TestCertificate1, string(poisonComment), dummy.TestCertificate2, randomComment, dummy.TestCertificate3, string(poisonComment)},
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"valid bundle with expired cert succeeds with the expired cert intact": {
-			parts:              []string{dummy.TestCertificate1, dummy.TestExpiredCertificate},
-			expectExpiredCerts: true,
-			expectErr:          false,
+			parts:                []string{dummy.TestCertificate1, dummy.TestExpiredCertificate},
+			expectExpiredCerts:   true,
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"invalid bundle with a certificate with a header fails": {
-			parts:     []string{dummy.TestCertificate1, dummyCertificateWithHeader, dummy.TestCertificate3},
-			expectErr: true,
+			parts:                []string{dummy.TestCertificate1, dummyCertificateWithHeader, dummy.TestCertificate3},
+			expectErr:            true,
+			filterDuplicateCerts: true,
 		},
 		"invalid bundle with a certificate with invalid base64 fails": {
-			parts:     []string{dummy.TestCertificate1, invalidCertificate, dummy.TestCertificate3},
-			expectErr: true,
+			parts:                []string{dummy.TestCertificate1, invalidCertificate, dummy.TestCertificate3},
+			expectErr:            true,
+			filterDuplicateCerts: true,
 		},
 		"invalid bundle containing a private key fails": {
-			parts:     []string{dummy.TestCertificate1, privateKey},
-			expectErr: true,
+			parts:                []string{dummy.TestCertificate1, privateKey},
+			expectErr:            true,
+			filterDuplicateCerts: true,
 		},
 		"invalid bundle with no certificates fails": {
-			parts:     []string{"abc123"},
-			expectErr: true,
+			parts:                []string{"abc123"},
+			expectErr:            true,
+			filterDuplicateCerts: true,
 		},
 		"valid bundle with valid certs and filtered expired cert": {
-			parts:              []string{dummy.TestCertificate1, dummy.TestExpiredCertificate, dummy.TestCertificate3},
-			filterExpiredCerts: true,
-			expectExpiredCerts: false,
-			expectErr:          false,
+			parts:                []string{dummy.TestCertificate1, dummy.TestExpiredCertificate, dummy.TestCertificate3},
+			filterExpiredCerts:   true,
+			expectExpiredCerts:   false,
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"valid bundle with valid cert and multiple filtered expired certs": {
-			parts:              []string{dummy.TestCertificate1, dummy.TestExpiredCertificate, dummy.TestExpiredCertificate},
-			filterExpiredCerts: true,
-			expectExpiredCerts: false,
-			expectErr:          false,
+			parts:                []string{dummy.TestCertificate1, dummy.TestExpiredCertificate, dummy.TestExpiredCertificate},
+			filterExpiredCerts:   true,
+			expectExpiredCerts:   false,
+			expectErr:            false,
+			filterDuplicateCerts: true,
 		},
 		"bundle with only a filtered expired cert is invalid": {
-			parts:              []string{dummy.TestExpiredCertificate},
-			filterExpiredCerts: true,
-			expectErr:          true,
+			parts:                []string{dummy.TestExpiredCertificate},
+			filterExpiredCerts:   true,
+			expectErr:            true,
+			filterDuplicateCerts: true,
+		},
+		"duplicate certificate should be removed": {
+			parts:                 []string{dummy.TestCertificate1, dummy.JoinCerts(dummy.TestCertificate1, dummy.TestCertificate1), dummy.TestCertificate2, dummy.TestCertificate2},
+			filterDuplicateCerts:  true,
+			filterExpiredCerts:    true,
+			expectErr:             false,
+			expectDuplicatesCerts: true,
 		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			validateOpts := ValidateAndSanitizeOptions{FilterExpired: test.filterExpiredCerts}
+			_ = name
+			var certPool = NewCertPool(test.filterExpiredCerts, test.filterDuplicateCerts)
 
 			inputBundle := []byte(strings.Join(test.parts, "\n"))
 
-			sanitizedBundleBytes, err := ValidateAndSanitizePEMBundleWithOptions(inputBundle, validateOpts)
+			err := ValidateAndSanitizePEMBundleWithOptions(certPool, inputBundle)
 
 			if test.expectErr != (err != nil) {
 				t.Fatalf("ValidateAndSanitizePEMBundle: expectErr: %v | err: %v", test.expectErr, err)
@@ -108,22 +130,22 @@ func TestValidateAndSanitizePEMBundle(t *testing.T) {
 				return
 			}
 
-			if sanitizedBundleBytes == nil {
+			if certPool.GetCertsQuantity() == 0 {
 				t.Fatalf("got no error from ValidateAndSanitizePEMBundle but sanitizedBundle was nil")
 			}
 
 			for _, strippable := range strippableText {
-				if bytes.Contains(sanitizedBundleBytes, strippable) {
+				if bytes.Contains(GetSplitPEMBundleBytes(certPool), strippable) {
 					// can't print the comment since it could be an invalid string
 					t.Errorf("expected sanitizedBundle to not contain a comment but it did")
 				}
 			}
 
-			if !utf8.Valid(sanitizedBundleBytes) {
+			if !utf8.Valid(GetSplitPEMBundleBytes(certPool)) {
 				t.Error("expected sanitizedBundle to be valid UTF-8 but it wasn't")
 			}
 
-			sanitizedBundle := string(sanitizedBundleBytes)
+			sanitizedBundle := string(GetSplitPEMBundleBytes(certPool))
 
 			if strings.HasSuffix(sanitizedBundle, "\n") {
 				t.Errorf("expected sanitizedBundle not to end with a newline")
@@ -141,7 +163,7 @@ func TestValidateAndSanitizePEMBundle(t *testing.T) {
 				}
 			}
 
-			certs, err := ValidateAndSplitPEMBundleWithOptions(sanitizedBundleBytes, validateOpts)
+			certs := GetCertsList(certPool)
 			if err != nil {
 				t.Errorf("failed to split already-validated bundle: %s", err)
 				return
@@ -150,27 +172,23 @@ func TestValidateAndSanitizePEMBundle(t *testing.T) {
 			var expiredCerts []*x509.Certificate
 
 			for _, cert := range certs {
-				parsedCerts, err := DecodeX509CertificateChainBytes(cert)
-				if err != nil {
-					t.Errorf("failed to decode split PEM cert: %s", err)
-					continue
-				}
-
-				if len(parsedCerts) != 1 {
-					// shouldn't ever happen since we're decoding a single PEM cert
-					t.Errorf("got more than one parsed cert after splitting a PEM bundle")
-					continue
-				}
-
-				parsedCert := parsedCerts[0]
-
-				if parsedCert.NotAfter.Before(dummy.DummyInstant()) {
-					expiredCerts = append(expiredCerts, parsedCert)
+				if cert.NotAfter.Before(dummy.DummyInstant()) {
+					expiredCerts = append(expiredCerts, cert)
 				}
 			}
 
 			if test.expectExpiredCerts != (len(expiredCerts) > 0) {
 				t.Errorf("expectExpiredCerts=%v but got %d expired certs", test.expectExpiredCerts, len(expiredCerts))
+			}
+
+			if test.expectDuplicatesCerts {
+				var hashes = make(map[[32]byte]struct{})
+				for _, cert := range certs {
+					hash := sha256.Sum256(cert.Raw)
+					if _, ok := hashes[hash]; ok {
+						t.Errorf("expectDuplicatesCerts=%v but got duplicate certs", test.expectDuplicatesCerts)
+					}
+				}
 			}
 		})
 	}

@@ -321,6 +321,9 @@ func Test_buildSourceBundle(t *testing.T) {
 					Version: "123",
 					Bundle:  dummy.TestCertificate5,
 				},
+				Options: Options{
+					FilterDuplicateCerts: true,
+				},
 			}
 
 			// for corresponding store if arbitrary password is expected then set it instead of default one

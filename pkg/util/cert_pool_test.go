@@ -23,7 +23,7 @@ import (
 )
 
 func TestNewCertPool(t *testing.T) {
-	certPool := newCertPool(false)
+	certPool := NewCertPool(false, true)
 
 	if certPool == nil {
 		t.Fatal("pool is nil")
@@ -76,7 +76,7 @@ func TestAppendCertFromPEM(t *testing.T) {
 
 	// populate certificates bundle
 	for _, crt := range certificateList {
-		certPool := newCertPool(false)
+		certPool := NewCertPool(false, true)
 
 		if err := certPool.appendCertFromPEM([]byte(crt.certificate)); err != nil {
 			t.Fatalf("error adding PEM certificate into pool %s", err)

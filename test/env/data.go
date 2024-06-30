@@ -217,11 +217,13 @@ func CheckBundleSyncedStartsWith(ctx context.Context, cl client.Client, name str
 			return fmt.Errorf("received data didn't start with expected data")
 		}
 
+		var certPool = util.NewCertPool(false, true)
+
 		remaining := strings.TrimPrefix(got, startingData)
 
 		// check that there are a nonzero number of valid certs remaining
 
-		_, err := util.ValidateAndSanitizePEMBundle([]byte(remaining))
+		err := util.ValidateAndSanitizePEMBundleWithOptions(certPool, []byte(remaining))
 		if err != nil {
 			return fmt.Errorf("received data didn't have any valid certs after valid starting data: %w", err)
 		}
@@ -317,7 +319,7 @@ func EventuallyBundleHasSyncedAllNamespacesStartsWith(ctx context.Context, cl cl
 // CheckJKSFileSynced ensures that the given JKS data
 func CheckJKSFileSynced(jksData []byte, expectedPassword string, expectedCertPEMData string) error {
 	reader := bytes.NewReader(jksData)
-
+	var certPool = util.NewCertPool(false, true)
 	ks := jks.New()
 
 	err := ks.Load(reader, []byte(expectedPassword))
@@ -325,7 +327,7 @@ func CheckJKSFileSynced(jksData []byte, expectedPassword string, expectedCertPEM
 		return err
 	}
 
-	expectedCertList, err := util.ValidateAndSplitPEMBundle([]byte(expectedCertPEMData))
+	err = util.ValidateAndSanitizePEMBundleWithOptions(certPool, []byte(expectedCertPEMData))
 	if err != nil {
 		return fmt.Errorf("invalid PEM data passed to CheckJKSFileSynced: %s", err)
 	}
@@ -334,7 +336,7 @@ func CheckJKSFileSynced(jksData []byte, expectedPassword string, expectedCertPEM
 	// that the count is the same
 
 	aliasCount := len(ks.Aliases())
-	expectedPEMCount := len(expectedCertList)
+	expectedPEMCount := len(util.GetSplitPEMBundle(certPool))
 
 	if aliasCount != expectedPEMCount {
 		return fmt.Errorf("expected %d certificates in JKS but found %d", expectedPEMCount, aliasCount)
