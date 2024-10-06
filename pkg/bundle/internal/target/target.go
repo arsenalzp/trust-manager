@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -53,6 +54,56 @@ type Reconciler struct {
 	// PatchResourceOverwrite allows use to override the patchResource function
 	// it is used for testing purposes
 	PatchResourceOverwrite func(ctx context.Context, obj interface{}) error
+}
+
+func (r *Reconciler) SyncAdditionalFormats(ctx context.Context,
+	log logr.Logger,
+	bundle *trustapi.Bundle,
+	name types.NamespacedName,
+	resolvedBundle Data,
+	shouldExist bool,
+) (bool, error) {
+	if bundle.Spec.Target.AdditionalFormats.JKS != nil {
+		if ok, hash := isHashEqual(*bundle.Spec.Target.AdditionalFormats.JKS.PasswordHash, *bundle.Spec.Target.AdditionalFormats.JKS.Password); !ok {
+			patch := trustapi.Bundle{
+				Spec: trustapi.BundleSpec{
+					Target: trustapi.BundleTarget{
+						AdditionalFormats: &trustapi.AdditionalFormats{
+							JKS: &trustapi.JKS{
+								PasswordHash: ptr.To(uint32(hash)),
+							},
+						},
+					},
+				},
+			}
+
+			if err := r.Client.Patch(ctx, bundle, client.MergeFrom(&patch)); err != nil {
+				return false, fmt.Errorf("failed to patch Bundle JKS password hash %s: %w", name, err)
+			}
+		}
+	}
+
+	if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
+		if ok, hash := isHashEqual(*bundle.Spec.Target.AdditionalFormats.PKCS12.PasswordHash, *bundle.Spec.Target.AdditionalFormats.PKCS12.Password); !ok {
+			patch := trustapi.Bundle{
+				Spec: trustapi.BundleSpec{
+					Target: trustapi.BundleTarget{
+						AdditionalFormats: &trustapi.AdditionalFormats{
+							PKCS12: &trustapi.PKCS12{
+								PasswordHash: ptr.To(uint32(hash)),
+							},
+						},
+					},
+				},
+			}
+
+			if err := r.Client.Patch(ctx, bundle, client.MergeFrom(&patch)); err != nil {
+				return false, fmt.Errorf("failed to patch Bundle PKCS12 password hash patch %s: %w", name, err)
+			}
+		}
+	}
+
+	return true, nil
 }
 
 // SyncConfigMap syncs the given data to the target ConfigMap in the given namespace.
@@ -242,6 +293,18 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 		needsUpdate = true
 	}
 
+	if bundle.Spec.Target.AdditionalFormats != nil {
+		if ok, _ := isHashEqual(*bundle.Spec.Target.AdditionalFormats.JKS.PasswordHash, *bundle.Spec.Target.AdditionalFormats.JKS.Password); !ok &&
+			bundle.Spec.Target.AdditionalFormats.JKS != nil {
+			needsUpdate = true
+		}
+
+		if ok, _ := isHashEqual(*bundle.Spec.Target.AdditionalFormats.PKCS12.PasswordHash, *bundle.Spec.Target.AdditionalFormats.PKCS12.Password); !ok &&
+			bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
+			needsUpdate = true
+		}
+	}
+
 	{
 		var key string
 		var targetFieldNames []string
@@ -395,4 +458,12 @@ func (b *Data) Populate(pool *util.CertPool, formats *trustapi.AdditionalFormats
 		}
 	}
 	return nil
+}
+
+func isHashEqual(oldHash uint32, passwd string) (bool, uint32) {
+	var crcTable = crc32.MakeTable(32)
+	var crc = crc32.New(crcTable)
+	crc.Write([]byte(passwd))
+
+	return crc.Sum32() == oldHash, crc.Sum32()
 }

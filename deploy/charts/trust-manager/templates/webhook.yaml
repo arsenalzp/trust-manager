@@ -112,3 +112,39 @@ webhooks:
         name: {{ include "trust-manager.name" . }}
         namespace: {{ include "trust-manager.namespace" . }}
         path: /validate-trust-cert-manager-io-v1alpha1-bundle
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "trust-manager.name" . }}
+  labels:
+    app: {{ include "trust-manager.name" . }}
+    {{- include "trust-manager.labels" . | nindent 4 }}
+{{ if not .Values.app.webhook.tls.helmCert.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: "{{ include "trust-manager.namespace" . }}/{{ include "trust-manager.name" . }}"
+{{ end }}
+
+webhooks:
+  - name: trust.cert-manager.io
+    rules:
+      - apiGroups:
+          - "trust.cert-manager.io"
+        apiVersions:
+          - "*"
+        operations:
+          - CREATE
+        resources:
+          - "*/*"
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: {{ .Values.app.webhook.timeoutSeconds }}
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+{{ if .Values.app.webhook.tls.helmCert.enabled }}
+      caBundle: "{{ $ca.Cert | b64enc }}"
+{{ end }}
+      service:
+        name: {{ include "trust-manager.name" . }}
+        namespace: {{ include "trust-manager.namespace" . }}
+        path: /mutate-trust-cert-manager-io-v1alpha1-bundle

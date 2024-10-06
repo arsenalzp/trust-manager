@@ -136,6 +136,10 @@ type JKS struct {
 	//+kubebuilder:validation:MaxLength=128
 	//+kubebuilder:default=changeit
 	Password *string `json:"password"`
+
+	// Password hash
+	//+optional
+	PasswordHash *uint32 `json:"passwordHash"`
 }
 
 type PKCS12 struct {
@@ -146,6 +150,10 @@ type PKCS12 struct {
 	//+kubebuilder:validation:MaxLength=128
 	//+kubebuilder:default=""
 	Password *string `json:"password,omitempty"`
+
+	// Password hash
+	//+optional
+	PasswordHash *uint32 `json:"passwordHash,omitempty"`
 }
 
 // NamespaceSelector defines selectors to match on Namespaces.

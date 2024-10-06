@@ -231,6 +231,10 @@ spec:
                               maxLength: 128
                               minLength: 1
                               type: string
+                            passwordHash:
+                              description: Password hash
+                              format: int32
+                              type: integer
                           required:
                             - key
                           type: object
@@ -247,6 +251,10 @@ spec:
                               description: Password for PKCS12 trust store
                               maxLength: 128
                               type: string
+                            passwordHash:
+                              description: Password hash
+                              format: int32
+                              type: integer
                           required:
                             - key
                           type: object

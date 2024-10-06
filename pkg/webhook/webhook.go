@@ -35,9 +35,11 @@ type Options struct {
 func Register(mgr manager.Manager, opts Options) error {
 	opts.Log.Info("registering webhook endpoints")
 	validator := &validator{log: opts.Log.WithName("validation")}
+	mutator := &mutator{log: opts.Log.WithName("mutation")}
 	if err := builder.WebhookManagedBy(mgr).
 		For(&trustapi.Bundle{}).
 		WithValidator(validator).
+		WithDefaulter(mutator).
 		Complete(); err != nil {
 		return fmt.Errorf("error registering webhook: %v", err)
 	}

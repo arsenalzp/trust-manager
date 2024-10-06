@@ -186,8 +186,9 @@ func (b *bundle) reconcileBundle(ctx context.Context, req ctrl.Request) (result 
 
 	type targetKind string
 	const (
-		configMapTarget targetKind = "ConfigMap"
-		secretTarget    targetKind = "Secret"
+		configMapTarget   targetKind = "ConfigMap"
+		secretTarget      targetKind = "Secret"
+		additionalFormats targetKind = "AdditionalFormats"
 	)
 
 	type targetResource struct {
@@ -232,6 +233,9 @@ func (b *bundle) reconcileBundle(ctx context.Context, req ctrl.Request) (result 
 			}
 			if bundle.Spec.Target.ConfigMap != nil {
 				targetResources[targetResource{Kind: configMapTarget, NamespacedName: namespacedName}] = true
+			}
+			if bundle.Spec.Target.AdditionalFormats != nil {
+				targetResources[targetResource{Kind: additionalFormats, NamespacedName: namespacedName}] = true
 			}
 		}
 	}
@@ -304,6 +308,11 @@ func (b *bundle) reconcileBundle(ctx context.Context, req ctrl.Request) (result 
 		if target.Kind == secretTarget {
 			syncFunc = func(targetLog logr.Logger, target targetResource, shouldExist bool) (bool, error) {
 				return b.targetReconciler.SyncSecret(ctx, targetLog, &bundle, target.NamespacedName, resolvedBundle.Data, shouldExist)
+			}
+		}
+		if target.Kind == additionalFormats {
+			syncFunc = func(targetLog logr.Logger, target targetResource, shouldExist bool) (bool, error) {
+				return b.targetReconciler.SyncAdditionalFormats(ctx, targetLog, &bundle, target.NamespacedName, resolvedBundle.Data, shouldExist)
 			}
 		}
 
