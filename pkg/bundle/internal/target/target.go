@@ -22,6 +22,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash/crc32"
+	"maps"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -111,6 +114,14 @@ func (r *Reconciler) SyncConfigMap(
 	}
 	configMapBinData := resolvedBundle.BinaryData
 
+	// Create empty map.
+	// If no additional formats are present then
+	// no annotations will be written into ConfigMap
+	var passwdHashAnnotations = make(map[string]string)
+	if bundle.Spec.Target.AdditionalFormats != nil {
+		passwdHashAnnotations = calcNewHashAnnotations(bundleTarget.AdditionalFormats)
+	}
+
 	// If the ConfigMap doesn't exist, create it.
 	if !apierrors.IsNotFound(err) {
 		// Exit early if no update is needed
@@ -125,6 +136,7 @@ func (r *Reconciler) SyncConfigMap(
 		WithAnnotations(map[string]string{
 			trustapi.BundleHashAnnotationKey: dataHash,
 		}).
+		WithAnnotations(passwdHashAnnotations).
 		WithData(configMapData).
 		WithBinaryData(configMapBinData)
 
@@ -240,6 +252,15 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 
 	if obj.GetAnnotations()[trustapi.BundleHashAnnotationKey] != dataHash {
 		needsUpdate = true
+	}
+
+	// Get old password hash annotations.
+	// Calculate new password hash annotation with changed password.
+	// Compare old password hash annotations with new ones.
+	if bundle.Spec.Target.AdditionalFormats != nil {
+		if !isHashAnnotationEqual(getOldHashAnnotations(obj.GetAnnotations(), bundle.Spec.Target.AdditionalFormats), calcNewHashAnnotations(bundle.Spec.Target.AdditionalFormats)) {
+			needsUpdate = true
+		}
 	}
 
 	{
@@ -395,4 +416,49 @@ func (b *Data) Populate(pool *util.CertPool, formats *trustapi.AdditionalFormats
 		}
 	}
 	return nil
+}
+
+// Calculate hash from the given password string.
+func calculateHash(passwd string) string {
+	crcTable := crc32.MakeTable(128)
+	crc := crc32.New(crcTable)
+	crc.Write([]byte(passwd))
+
+	return strconv.Itoa(int(crc.Sum32()))
+}
+
+// Retrieve old password hashes from the given annotations
+// Annotation keys are taken from bundle additional formats keys
+func getOldHashAnnotations(annotations map[string]string, bundle *trustapi.AdditionalFormats) map[string]string {
+	var passwdHashAnnotations = make(map[string]string)
+
+	if bundle.JKS != nil {
+		passwdHashAnnotations[bundle.JKS.Key] = annotations[bundle.JKS.Key]
+	}
+	if bundle.PKCS12 != nil {
+		passwdHashAnnotations[bundle.PKCS12.Key] = annotations[bundle.PKCS12.Key]
+	}
+
+	return passwdHashAnnotations
+}
+
+// Calculate new password hash annotations from the given additional formats
+// keys and passwords
+func calcNewHashAnnotations(bundle *trustapi.AdditionalFormats) map[string]string {
+	var passwdHashAnnotations = make(map[string]string)
+
+	if bundle.JKS != nil && bundle.JKS.Password != nil {
+		passwdHashAnnotations[bundle.JKS.Key] = calculateHash(*bundle.JKS.Password)
+	}
+	if bundle.PKCS12 != nil && bundle.PKCS12.Password != nil {
+		passwdHashAnnotations[bundle.PKCS12.Key] = calculateHash(*bundle.PKCS12.Password)
+	}
+
+	return passwdHashAnnotations
+}
+
+// Compare two password hash annotations given from the current target annotations
+// and newly calculated ones.
+func isHashAnnotationEqual(oldAnnot, newAnnot map[string]string) bool {
+	return maps.Equal(oldAnnot, newAnnot)
 }
