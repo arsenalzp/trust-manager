@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"maps"
 	"strconv"
 	"strings"
 
@@ -43,6 +42,11 @@ import (
 	"github.com/cert-manager/trust-manager/pkg/bundle/internal/ssa_client"
 	"github.com/cert-manager/trust-manager/pkg/bundle/internal/truststore"
 	"github.com/cert-manager/trust-manager/pkg/util"
+)
+
+const (
+	JksPasswdHashAnnotation    = "trust.cert-manager.io/jks-pwd-hash"
+	Pkcs12PasswdHashAnnotation = "trust.cert-manager.io/pksc12-pwd-hash"
 )
 
 type Reconciler struct {
@@ -258,7 +262,13 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 	// Calculate new password hash annotation with changed password.
 	// Compare old password hash annotations with new ones.
 	if bundle.Spec.Target.AdditionalFormats != nil {
-		if !isHashAnnotationEqual(getOldHashAnnotations(obj.GetAnnotations(), bundle.Spec.Target.AdditionalFormats), calcNewHashAnnotations(bundle.Spec.Target.AdditionalFormats)) {
+		if bundle.Spec.Target.AdditionalFormats.JKS != nil &&
+			obj.GetAnnotations()[JksPasswdHashAnnotation] != calculateHash(*bundle.Spec.Target.AdditionalFormats.JKS.Password) {
+			needsUpdate = true
+		}
+
+		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil &&
+			obj.GetAnnotations()[Pkcs12PasswdHashAnnotation] != calculateHash(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password) {
 			needsUpdate = true
 		}
 	}
@@ -427,38 +437,17 @@ func calculateHash(passwd string) string {
 	return strconv.Itoa(int(crc.Sum32()))
 }
 
-// Retrieve old password hashes from the given annotations
-// Annotation keys are taken from bundle additional formats keys
-func getOldHashAnnotations(annotations map[string]string, bundle *trustapi.AdditionalFormats) map[string]string {
-	var passwdHashAnnotations = make(map[string]string)
-
-	if bundle.JKS != nil {
-		passwdHashAnnotations[bundle.JKS.Key] = annotations[bundle.JKS.Key]
-	}
-	if bundle.PKCS12 != nil {
-		passwdHashAnnotations[bundle.PKCS12.Key] = annotations[bundle.PKCS12.Key]
-	}
-
-	return passwdHashAnnotations
-}
-
 // Calculate new password hash annotations from the given additional formats
 // keys and passwords
 func calcNewHashAnnotations(bundle *trustapi.AdditionalFormats) map[string]string {
 	var passwdHashAnnotations = make(map[string]string)
 
 	if bundle.JKS != nil && bundle.JKS.Password != nil {
-		passwdHashAnnotations[bundle.JKS.Key] = calculateHash(*bundle.JKS.Password)
+		passwdHashAnnotations[JksPasswdHashAnnotation] = calculateHash(*bundle.JKS.Password)
 	}
 	if bundle.PKCS12 != nil && bundle.PKCS12.Password != nil {
-		passwdHashAnnotations[bundle.PKCS12.Key] = calculateHash(*bundle.PKCS12.Password)
+		passwdHashAnnotations[Pkcs12PasswdHashAnnotation] = calculateHash(*bundle.PKCS12.Password)
 	}
 
 	return passwdHashAnnotations
-}
-
-// Compare two password hash annotations given from the current target annotations
-// and newly calculated ones.
-func isHashAnnotationEqual(oldAnnot, newAnnot map[string]string) bool {
-	return maps.Equal(oldAnnot, newAnnot)
 }
