@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -105,24 +106,24 @@ func (r *Reconciler) SyncConfigMap(
 
 	// Generated PKCS #12 is not deterministic - best we can do here is update if the pem cert has
 	// changed (hence not checking if PKCS #12 matches)
-	dataHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resolvedBundle.Data)))
+	hashAnnotations := make(map[string]string)
+	hashAnnotations[trustapi.BundleHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(resolvedBundle.Data)))
+
 	configMapData := map[string]string{
 		bundleTarget.ConfigMap.Key: resolvedBundle.Data,
 	}
 	configMapBinData := resolvedBundle.BinaryData
 
-	// Create empty map.
 	// If no additional formats are present then
-	// no annotations will be written into ConfigMap
-	var passwdHashAnnotations = make(map[string]string)
+	// no additional annotations will be written into ConfigMap
 	if bundle.Spec.Target.AdditionalFormats != nil {
-		passwdHashAnnotations = truststorePasswordAnnotations(bundleTarget.AdditionalFormats)
+		maps.Copy(hashAnnotations, truststorePasswordAnnotations(bundleTarget.AdditionalFormats))
 	}
 
 	// If the ConfigMap doesn't exist, create it.
 	if !apierrors.IsNotFound(err) {
 		// Exit early if no update is needed
-		if exit, err := r.needsUpdate(ctx, KindConfigMap, log, targetObj, bundle, dataHash, passwdHashAnnotations); err != nil {
+		if exit, err := r.needsUpdate(ctx, KindConfigMap, log, targetObj, bundle, hashAnnotations); err != nil {
 			return false, err
 		} else if !exit {
 			return false, nil
@@ -130,10 +131,7 @@ func (r *Reconciler) SyncConfigMap(
 	}
 
 	configMapPatch := prepareTargetPatch(coreapplyconfig.ConfigMap(name.Name, name.Namespace), *bundle).
-		WithAnnotations(map[string]string{
-			trustapi.BundleHashAnnotationKey: dataHash,
-		}).
-		WithAnnotations(passwdHashAnnotations).
+		WithAnnotations(hashAnnotations).
 		WithData(configMapData).
 		WithBinaryData(configMapBinData)
 
@@ -196,7 +194,9 @@ func (r *Reconciler) SyncSecret(
 
 	// Generated PKCS #12 is not deterministic - best we can do here is update if the pem cert has
 	// changed (hence not checking if PKCS #12 matches)
-	dataHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resolvedBundle.Data)))
+	hashAnnotations := make(map[string]string)
+	hashAnnotations[trustapi.BundleHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(resolvedBundle.Data)))
+
 	secretData := map[string][]byte{
 		bundleTarget.Secret.Key: []byte(resolvedBundle.Data),
 	}
@@ -205,18 +205,16 @@ func (r *Reconciler) SyncSecret(
 		secretData[k] = v
 	}
 
-	// Create empty map.
 	// If no additional formats are present then
-	// no annotations will be written into ConfigMap
-	var passwdHashAnnotations = make(map[string]string)
+	// no additional annotations will be written into ConfigMap
 	if bundle.Spec.Target.AdditionalFormats != nil {
-		passwdHashAnnotations = truststorePasswordAnnotations(bundleTarget.AdditionalFormats)
+		maps.Copy(hashAnnotations, truststorePasswordAnnotations(bundleTarget.AdditionalFormats))
 	}
 
 	// If the Secret doesn't exist, create it.
 	if !apierrors.IsNotFound(err) {
 		// Exit early if no update is needed
-		if exit, err := r.needsUpdate(ctx, KindSecret, log, targetObj, bundle, dataHash, passwdHashAnnotations); err != nil {
+		if exit, err := r.needsUpdate(ctx, KindSecret, log, targetObj, bundle, hashAnnotations); err != nil {
 			return false, err
 		} else if !exit {
 			return false, nil
@@ -224,9 +222,7 @@ func (r *Reconciler) SyncSecret(
 	}
 
 	secretPatch := prepareTargetPatch(coreapplyconfig.Secret(name.Name, name.Namespace), *bundle).
-		WithAnnotations(map[string]string{
-			trustapi.BundleHashAnnotationKey: dataHash,
-		}).
+		WithAnnotations(hashAnnotations).
 		WithData(secretData)
 
 	if _, err = r.patchSecret(ctx, secretPatch); err != nil {
@@ -248,7 +244,7 @@ const (
 // This function comparing either was data sources or trust stores passwords changed
 // based on sources hash and passwords hashes.
 // All hashes are stored in Annotations
-func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger, obj *metav1.PartialObjectMetadata, bundle *trustapi.Bundle, dataHash string, passwdHashAnnotations map[string]string) (bool, error) {
+func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger, obj *metav1.PartialObjectMetadata, bundle *trustapi.Bundle, hashAnnotations map[string]string) (bool, error) {
 	needsUpdate := false
 	if !metav1.IsControlledBy(obj, bundle) {
 		needsUpdate = true
@@ -258,23 +254,9 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 		needsUpdate = true
 	}
 
-	if obj.GetAnnotations()[trustapi.BundleHashAnnotationKey] != dataHash {
-		needsUpdate = true
-	}
-
-	// Get old password hash annotations.
-	// Compare old password hash annotations with new ones.
-	if bundle.Spec.Target.AdditionalFormats != nil {
-		if bundle.Spec.Target.AdditionalFormats.JKS != nil {
-			if obj.GetAnnotations()[trustapi.BundleJksPasswdHashAnnotation] != passwdHashAnnotations[trustapi.BundleJksPasswdHashAnnotation] {
-				needsUpdate = true
-			}
-		}
-
-		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
-			if obj.GetAnnotations()[trustapi.BundlePkcs12PasswdHashAnnotation] != passwdHashAnnotations[trustapi.BundlePkcs12PasswdHashAnnotation] {
-				needsUpdate = true
-			}
+	for k, v := range hashAnnotations {
+		if obj.GetAnnotations()[k] != v {
+			needsUpdate = true
 		}
 	}
 
