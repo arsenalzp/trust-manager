@@ -22,8 +22,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"hash/crc32"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -262,14 +260,16 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 	// Calculate new password hash annotation with changed password.
 	// Compare old password hash annotations with new ones.
 	if bundle.Spec.Target.AdditionalFormats != nil {
-		if bundle.Spec.Target.AdditionalFormats.JKS != nil &&
-			obj.GetAnnotations()[JksPasswdHashAnnotation] != calculateHash(*bundle.Spec.Target.AdditionalFormats.JKS.Password) {
-			needsUpdate = true
+		if bundle.Spec.Target.AdditionalFormats.JKS != nil {
+			if hash, ok := obj.GetAnnotations()[JksPasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.JKS.Password))) {
+				needsUpdate = true
+			}
 		}
 
-		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil &&
-			obj.GetAnnotations()[Pkcs12PasswdHashAnnotation] != calculateHash(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password) {
-			needsUpdate = true
+		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
+			if hash, ok := obj.GetAnnotations()[Pkcs12PasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password))) {
+				needsUpdate = true
+			}
 		}
 	}
 
@@ -428,25 +428,16 @@ func (b *Data) Populate(pool *util.CertPool, formats *trustapi.AdditionalFormats
 	return nil
 }
 
-// Calculate hash from the given password string.
-func calculateHash(passwd string) string {
-	crcTable := crc32.MakeTable(128)
-	crc := crc32.New(crcTable)
-	crc.Write([]byte(passwd))
-
-	return strconv.Itoa(int(crc.Sum32()))
-}
-
 // Calculate new password hash annotations from the given additional formats
 // keys and passwords
 func calcNewHashAnnotations(bundle *trustapi.AdditionalFormats) map[string]string {
 	var passwdHashAnnotations = make(map[string]string)
 
 	if bundle.JKS != nil && bundle.JKS.Password != nil {
-		passwdHashAnnotations[JksPasswdHashAnnotation] = calculateHash(*bundle.JKS.Password)
+		passwdHashAnnotations[JksPasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.JKS.Password)))
 	}
 	if bundle.PKCS12 != nil && bundle.PKCS12.Password != nil {
-		passwdHashAnnotations[Pkcs12PasswdHashAnnotation] = calculateHash(*bundle.PKCS12.Password)
+		passwdHashAnnotations[Pkcs12PasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.PKCS12.Password)))
 	}
 
 	return passwdHashAnnotations
