@@ -42,11 +42,6 @@ import (
 	"github.com/cert-manager/trust-manager/pkg/util"
 )
 
-const (
-	JksPasswdHashAnnotation    = "trust.cert-manager.io/jks-pwd-hash"
-	Pkcs12PasswdHashAnnotation = "trust.cert-manager.io/pksc12-pwd-hash"
-)
-
 type Reconciler struct {
 	// a cache-backed Kubernetes client
 	Client client.Client
@@ -121,7 +116,7 @@ func (r *Reconciler) SyncConfigMap(
 	// no annotations will be written into ConfigMap
 	var passwdHashAnnotations = make(map[string]string)
 	if bundle.Spec.Target.AdditionalFormats != nil {
-		passwdHashAnnotations = calcNewHashAnnotations(bundleTarget.AdditionalFormats)
+		passwdHashAnnotations = truststorePasswordAnnotations(bundleTarget.AdditionalFormats)
 	}
 
 	// If the ConfigMap doesn't exist, create it.
@@ -261,13 +256,13 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 	// Compare old password hash annotations with new ones.
 	if bundle.Spec.Target.AdditionalFormats != nil {
 		if bundle.Spec.Target.AdditionalFormats.JKS != nil {
-			if hash, ok := obj.GetAnnotations()[JksPasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.JKS.Password))) {
+			if hash, ok := obj.GetAnnotations()[trustapi.BundleJksPasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.JKS.Password))) {
 				needsUpdate = true
 			}
 		}
 
 		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
-			if hash, ok := obj.GetAnnotations()[Pkcs12PasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password))) {
+			if hash, ok := obj.GetAnnotations()[trustapi.BundlePkcs12PasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password))) {
 				needsUpdate = true
 			}
 		}
@@ -430,15 +425,15 @@ func (b *Data) Populate(pool *util.CertPool, formats *trustapi.AdditionalFormats
 
 // Calculate new password hash annotations from the given additional formats
 // keys and passwords
-func calcNewHashAnnotations(bundle *trustapi.AdditionalFormats) map[string]string {
-	var passwdHashAnnotations = make(map[string]string)
+func truststorePasswordAnnotations(bundle *trustapi.AdditionalFormats) map[string]string {
+	var truststorePasswordAnnotations = make(map[string]string)
 
 	if bundle.JKS != nil && bundle.JKS.Password != nil {
-		passwdHashAnnotations[JksPasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.JKS.Password)))
+		truststorePasswordAnnotations[trustapi.BundleJksPasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.JKS.Password)))
 	}
 	if bundle.PKCS12 != nil && bundle.PKCS12.Password != nil {
-		passwdHashAnnotations[Pkcs12PasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.PKCS12.Password)))
+		truststorePasswordAnnotations[trustapi.BundlePkcs12PasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.PKCS12.Password)))
 	}
 
-	return passwdHashAnnotations
+	return truststorePasswordAnnotations
 }
