@@ -122,7 +122,7 @@ func (r *Reconciler) SyncConfigMap(
 	// If the ConfigMap doesn't exist, create it.
 	if !apierrors.IsNotFound(err) {
 		// Exit early if no update is needed
-		if exit, err := r.needsUpdate(ctx, KindConfigMap, log, targetObj, bundle, dataHash); err != nil {
+		if exit, err := r.needsUpdate(ctx, KindConfigMap, log, targetObj, bundle, dataHash, passwdHashAnnotations); err != nil {
 			return false, err
 		} else if !exit {
 			return false, nil
@@ -205,10 +205,18 @@ func (r *Reconciler) SyncSecret(
 		secretData[k] = v
 	}
 
+	// Create empty map.
+	// If no additional formats are present then
+	// no annotations will be written into ConfigMap
+	var passwdHashAnnotations = make(map[string]string)
+	if bundle.Spec.Target.AdditionalFormats != nil {
+		passwdHashAnnotations = truststorePasswordAnnotations(bundleTarget.AdditionalFormats)
+	}
+
 	// If the Secret doesn't exist, create it.
 	if !apierrors.IsNotFound(err) {
 		// Exit early if no update is needed
-		if exit, err := r.needsUpdate(ctx, KindSecret, log, targetObj, bundle, dataHash); err != nil {
+		if exit, err := r.needsUpdate(ctx, KindSecret, log, targetObj, bundle, dataHash, passwdHashAnnotations); err != nil {
 			return false, err
 		} else if !exit {
 			return false, nil
@@ -237,7 +245,10 @@ const (
 	KindSecret    Kind = "Secret"
 )
 
-func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger, obj *metav1.PartialObjectMetadata, bundle *trustapi.Bundle, dataHash string) (bool, error) {
+// This function comparing either was data sources or trust stores passwords changed
+// based on sources hash and passwords hashes.
+// All hashes are stored in Annotations
+func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger, obj *metav1.PartialObjectMetadata, bundle *trustapi.Bundle, dataHash string, passwdHashAnnotations map[string]string) (bool, error) {
 	needsUpdate := false
 	if !metav1.IsControlledBy(obj, bundle) {
 		needsUpdate = true
@@ -252,17 +263,16 @@ func (r *Reconciler) needsUpdate(ctx context.Context, kind Kind, log logr.Logger
 	}
 
 	// Get old password hash annotations.
-	// Calculate new password hash annotation with changed password.
 	// Compare old password hash annotations with new ones.
 	if bundle.Spec.Target.AdditionalFormats != nil {
 		if bundle.Spec.Target.AdditionalFormats.JKS != nil {
-			if hash, ok := obj.GetAnnotations()[trustapi.BundleJksPasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.JKS.Password))) {
+			if obj.GetAnnotations()[trustapi.BundleJksPasswdHashAnnotation] != passwdHashAnnotations[trustapi.BundleJksPasswdHashAnnotation] {
 				needsUpdate = true
 			}
 		}
 
 		if bundle.Spec.Target.AdditionalFormats.PKCS12 != nil {
-			if hash, ok := obj.GetAnnotations()[trustapi.BundlePkcs12PasswdHashAnnotation]; !ok || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.Spec.Target.AdditionalFormats.PKCS12.Password))) {
+			if obj.GetAnnotations()[trustapi.BundlePkcs12PasswdHashAnnotation] != passwdHashAnnotations[trustapi.BundlePkcs12PasswdHashAnnotation] {
 				needsUpdate = true
 			}
 		}
