@@ -26,7 +26,7 @@ const (
 	BundleLabelKey                   = "trust.cert-manager.io/bundle"
 	BundleHashAnnotationKey          = "trust.cert-manager.io/hash"
 	BundleJksPasswdHashAnnotation    = "trust.cert-manager.io/jks-pwd-hash"
-	BundlePkcs12PasswdHashAnnotation = "trust.cert-manager.io/pksc12-pwd-hash"
+	BundlePkcs12PasswdHashAnnotation = "trust.cert-manager.io/pksc12-pwd-hash" # nosec G101
 )
 
 // +kubebuilder:object:root=true
