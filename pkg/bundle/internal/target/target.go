@@ -421,10 +421,10 @@ func truststorePasswordAnnotations(bundle *trustapi.AdditionalFormats) map[strin
 	var truststorePasswordAnnotations = make(map[string]string)
 
 	if bundle.JKS != nil && bundle.JKS.Password != nil {
-		truststorePasswordAnnotations[trustapi.BundleJksPasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.JKS.Password)))
+		truststorePasswordAnnotations[trustapi.BundleJksPasswdHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.JKS.Password)))
 	}
 	if bundle.PKCS12 != nil && bundle.PKCS12.Password != nil {
-		truststorePasswordAnnotations[trustapi.BundlePkcs12PasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.PKCS12.Password)))
+		truststorePasswordAnnotations[trustapi.BundlePkcs12PasswdHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(*bundle.PKCS12.Password)))
 	}
 
 	return truststorePasswordAnnotations

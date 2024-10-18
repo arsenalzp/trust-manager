@@ -149,10 +149,10 @@ func Test_Reconcile(t *testing.T) {
 
 			if additionaFormats != nil {
 				if additionaFormats.JKS != nil {
-					annotations[trustapi.BundleJksPasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*additionaFormats.JKS.Password)))
+					annotations[trustapi.BundleJksPasswdHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(*additionaFormats.JKS.Password)))
 				}
 				if additionaFormats.PKCS12 != nil {
-					annotations[trustapi.BundlePkcs12PasswdHashAnnotation] = fmt.Sprintf("%x", sha256.Sum256([]byte(*additionaFormats.PKCS12.Password)))
+					annotations[trustapi.BundlePkcs12PasswdHashAnnotationKey] = fmt.Sprintf("%x", sha256.Sum256([]byte(*additionaFormats.PKCS12.Password)))
 				}
 			}
 
@@ -211,8 +211,8 @@ func Test_Reconcile(t *testing.T) {
 			}
 
 			// These annotation are used for password hash sum testing
-			annotations[trustapi.BundleJksPasswdHashAnnotation] = "annotation will be changed during reconciliation"
-			annotations[trustapi.BundlePkcs12PasswdHashAnnotation] = "annotation will be changed reconciliation"
+			annotations[trustapi.BundleJksPasswdHashAnnotationKey] = "annotation will be changed during reconciliation"
+			annotations[trustapi.BundlePkcs12PasswdHashAnnotationKey] = "annotation will be changed reconciliation"
 
 			dataEntries := make([]string, 0, len(data))
 			for k := range data {
