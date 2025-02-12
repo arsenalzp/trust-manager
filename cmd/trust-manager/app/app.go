@@ -17,9 +17,11 @@ limitations under the License.
 package app
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -89,6 +91,48 @@ func NewCommand() *cobra.Command {
 					Port:    opts.Webhook.Port,
 					Host:    opts.Webhook.Host,
 					CertDir: opts.Webhook.CertDir,
+					TLSOpts: []func(*tls.Config){
+						func(c *tls.Config) {
+							// Get Minimum TLS version from CLI arguments
+							c.MinVersion = func() uint16 {
+								var minVersion uint16
+								switch {
+								case opts.MinTLSVersion == "tls10":
+									minVersion = tls.VersionTLS10
+								case opts.MinTLSVersion == "tls11":
+									minVersion = tls.VersionTLS11
+								case opts.MinTLSVersion == "tls12":
+									minVersion = tls.VersionTLS12
+								case opts.MinTLSVersion == "tls13":
+									minVersion = tls.VersionTLS13
+								}
+
+								return minVersion
+							}()
+
+							// Get Cipher IDs from CLI arguments
+							c.CipherSuites = func() []uint16 {
+								// Note that TLS 1.3 ciphersuites are not configurable.
+								if c.MinVersion == tls.VersionTLS13 {
+									return nil
+								}
+
+								var cipherSuiteIDs []uint16 = make([]uint16, 0)
+								var cipherSuiteList []*tls.CipherSuite
+
+								cipherSuiteList = append(cipherSuiteList, tls.CipherSuites()...)
+								cipherSuiteList = append(cipherSuiteList, tls.InsecureCipherSuites()...)
+
+								for _, s := range cipherSuiteList {
+									if slices.Contains(opts.CiphersSuite, s.Name) {
+										cipherSuiteIDs = append(cipherSuiteIDs, s.ID)
+									}
+								}
+
+								return cipherSuiteIDs
+							}()
+						},
+					},
 				}),
 				Metrics: server.Options{
 					BindAddress: fmt.Sprintf("0.0.0.0:%d", opts.MetricsPort),

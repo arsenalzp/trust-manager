@@ -78,6 +78,8 @@ spec:
           initialDelaySeconds: 3
           periodSeconds: 7
         args:
+          - "--min-tls={{.Values.app.minTLSVersion}}"
+          - "--ciphers-suite={{.Values.app.ciphersSuite}}"
           - "--log-format={{.Values.app.logFormat}}"
           - "--log-level={{.Values.app.logLevel}}"
           - "--metrics-port={{.Values.app.metrics.port}}"

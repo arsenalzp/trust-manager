@@ -17,6 +17,7 @@ limitations under the License.
 package options
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -66,6 +67,14 @@ type Options struct {
 
 	// Leader election lease renew duration
 	RenewDeadline time.Duration
+
+	// Minimum TLS version
+	MinTLSVersion string
+
+	// Ciphers Suite
+	CiphersSuite []string
+
+	TLSConfig tls.Config
 }
 
 type logOptions struct {
@@ -159,6 +168,7 @@ func (o *Options) addFlags(cmd *cobra.Command) {
 	o.addBundleFlags(nfs.FlagSet("Bundle"))
 	o.addLoggingFlags(nfs.FlagSet("Logging"))
 	o.addWebhookFlags(nfs.FlagSet("Webhook"))
+	o.addTLSConfigFlags(nfs.FlagSet("TLSConfig"))
 	o.kubeConfigFlags = genericclioptions.NewConfigFlags(true)
 	o.kubeConfigFlags.AddFlags(nfs.FlagSet("Kubernetes"))
 
@@ -242,4 +252,14 @@ func (o *Options) addWebhookFlags(fs *pflag.FlagSet) {
 		"Directory where the Webhook certificate and private key are located. "+
 			"Certificate and private key must be named 'tls.crt' and 'tls.key' "+
 			"respectively.")
+}
+
+func (o *Options) addTLSConfigFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&o.MinTLSVersion,
+		"min-tls", "",
+		"MinVersion contains the minimum TLS version that is acceptable.")
+
+	fs.StringSliceVar(&o.CiphersSuite,
+		"ciphers-suite", nil,
+		"CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites.")
 }
